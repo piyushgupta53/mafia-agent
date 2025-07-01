@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mafia Multi-Agent Game</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/style.css') }}"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <header class="game-header">
+        <h1>🕵️ Mafia Multi-Agent Game 🎭</h1>
+        <div class="game-controls">
+          <button id="start-game" class="btn btn-primary">
+            Start New Game
+          </button>
+          <button id="stop-game" class="btn btn-danger">Stop Game</button>
+          <div class="connection-status" id="connection-status">
+            Disconnected
+          </div>
+        </div>
+      </header>
+
+      <!-- Game Status Panel -->
+      <div class="game-status-panel">
+        <div class="status-item">
+          <span class="label">Phase:</span>
+          <span id="current-phase" class="value">Setup</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Day:</span>
+          <span id="current-day" class="value">0</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Alive:</span>
+          <span id="alive-count" class="value">0</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Eliminated:</span>
+          <span id="eliminated-count" class="value">0</span>
+        </div>
+      </div>
+
+      <!-- Main Game Area -->
+      <div class="game-area">
+        <!-- Chat Display -->
+        <div class="chat-section">
+          <div class="chat-header">
+            <h3>🗣️ Game Chat</h3>
+            <div class="chat-filters">
+              <button class="filter-btn active" data-filter="all">All</button>
+              <button class="filter-btn" data-filter="public">Public</button>
+              <button class="filter-btn" data-filter="mafia">Mafia Only</button>
+              <button class="filter-btn" data-filter="narrator">
+                Narrator
+              </button>
+            </div>
+          </div>
+          <div class="chat-messages" id="chat-messages">
+            <div class="welcome-message">
+              <h3>Welcome to the Mafia Game!</h3>
+              <p>
+                Click "Start New Game" to begin watching AI agents play Mafia in
+                real-time.
+              </p>
+              <div class="role-legend">
+                <h4>Role Colors:</h4>
+                <div class="legend-items">
+                  <span class="legend-item mafia">🔴 Mafia</span>
+                  <span class="legend-item detective">🔵 Detective</span>
+                  <span class="legend-item doctor">🟢 Doctor</span>
+                  <span class="legend-item civilian">⚪ Civilian</span>
+                  <span class="legend-item narrator">🟣 Narrator</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Game Statistics -->
+        <div class="stats-section">
+          <div class="stats-header">
+            <h3>📊 Game Statistics</h3>
+          </div>
+
+          <!-- Player Status -->
+          <div class="player-status">
+            <h4>👥 Players</h4>
+            <div class="players-grid" id="players-grid">
+              <!-- Players will be dynamically added here -->
+            </div>
+          </div>
+
+          <!-- Vote Tracking -->
+          <div class="vote-tracking">
+            <h4>🗳️ Current Votes</h4>
+            <div id="vote-chart-container">
+              <canvas id="vote-chart"></canvas>
+            </div>
+            <!-- Individual Votes Display -->
+            <div class="individual-votes">
+              <h5>👤 Individual Votes</h5>
+              <div
+                id="voting-status"
+                class="voting-status"
+                style="display: none"
+              >
+                <span class="voting-indicator">🗳️ Voting in progress...</span>
+              </div>
+              <div id="individual-votes-list">
+                <!-- Individual votes will be displayed here -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Game Progress -->
+          <div class="game-progress">
+            <h4>📈 Game Progress</h4>
+            <div class="progress-stats" id="progress-stats">
+              <div class="stat-item">
+                <span>Mafia Remaining:</span>
+                <span id="mafia-count">0</span>
+              </div>
+              <div class="stat-item">
+                <span>Civilians Remaining:</span>
+                <span id="civilian-count">0</span>
+              </div>
+              <div class="stat-item">
+                <span>Elimination Rate:</span>
+                <span id="elimination-rate">0%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Game Events Timeline -->
+          <div class="events-timeline">
+            <h4>📜 Recent Events</h4>
+            <div class="timeline" id="events-timeline">
+              <!-- Timeline events will be added here -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Game End Modal -->
+      <div id="game-end-modal" class="modal">
+        <div class="modal-content">
+          <h2 id="winner-announcement"></h2>
+          <div id="final-stats"></div>
+          <button id="close-modal" class="btn btn-primary">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Pass agent colors to JavaScript
+      window.AGENT_COLORS = JSON.parse(
+        document.getElementById("agent-colors-data").textContent
+      );
+    </script>
+    <script
+      id="agent-colors-data"
+      type="application/json"
+      style="display: none"
+    >
+      {{ agent_colors | tojson | safe }}
+    </script>
+    <script src="{{ url_for('static', filename='js/game.js') }}"></script>
+  </body>
+</html>
