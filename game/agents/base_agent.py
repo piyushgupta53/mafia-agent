@@ -127,7 +127,7 @@ YOUR MEMORIES:
             return "I need more time to think about this."
 
     def participate_in_discussion(
-        self, topic: str, previous_messages: List[Dict]
+        self, topic: str, previous_messages: List[Dict], discussion_context: str = ""
     ) -> str:
         """Participate in group discussion"""
         context = self.get_context_message()
@@ -141,6 +141,8 @@ YOUR MEMORIES:
         )
 
         prompt = f"""You are {self.name}, a {self.role} in a Mafia game.
+
+{discussion_context}
 
 DISCUSSION TOPIC: {topic}
 

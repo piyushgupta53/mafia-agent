@@ -233,17 +233,58 @@ class MafiaGameController:
             name for name in self.game_state.alive_players if name != "Narrator"
         ]
 
+        # Track who has spoken to ensure fairness
+        players_spoken = set()
+
         # Run discussion for specified duration
         start_time = time.time()
         discussion_rounds = 0
 
-        while (
-            time.time() - start_time < duration
-            and discussion_rounds < self.max_discussion_rounds
-        ):
-            # Select 2-3 players to speak per round
-            num_speakers = min(3, len(alive_players))
-            speakers = random.sample(alive_players, num_speakers)
+        # Phase 1: Ensure every player gets to speak at least once
+        print("🔄 Phase 1: Initial statements from all players")
+        for speaker in alive_players:
+            if speaker in self.agents:
+                try:
+                    # Add timeout to prevent hanging
+                    await asyncio.wait_for(
+                        self.run_agent_discussion(speaker, topic),
+                        timeout=self.response_timeout,
+                    )
+                    players_spoken.add(speaker)
+                    await asyncio.sleep(1)  # Brief pause between speakers
+                except asyncio.TimeoutError:
+                    print(f"Timeout in discussion for {speaker}")
+                except Exception as e:
+                    print(f"Error in discussion for {speaker}: {e}")
+
+        # Phase 2: Follow-up discussions and responses
+        print("🔄 Phase 2: Follow-up discussions and responses")
+        remaining_time = duration - (time.time() - start_time)
+
+        while remaining_time > 0 and discussion_rounds < self.max_discussion_rounds:
+            # Check for agents who should respond to accusations
+            recent_messages = self.game_state.chat_history[-10:]
+            priority_speakers = []
+
+            for player in alive_players:
+                if self.should_agent_respond(player, recent_messages):
+                    priority_speakers.append(player)
+
+            # Select players who haven't spoken recently for follow-up
+            available_speakers = [p for p in alive_players if p not in players_spoken]
+
+            if not available_speakers:
+                # If everyone has spoken, reset and allow everyone to speak again
+                players_spoken.clear()
+                available_speakers = alive_players
+
+            # Prioritize agents who need to respond to accusations
+            if priority_speakers:
+                speakers = priority_speakers[:2]  # Allow up to 2 priority responses
+            else:
+                # Select 2-3 players for this round
+                num_speakers = min(3, len(available_speakers))
+                speakers = random.sample(available_speakers, num_speakers)
 
             # Run discussions sequentially to avoid conflicts
             for speaker in speakers:
@@ -254,6 +295,7 @@ class MafiaGameController:
                             self.run_agent_discussion(speaker, topic),
                             timeout=self.response_timeout,
                         )
+                        players_spoken.add(speaker)
                         await asyncio.sleep(1)  # Brief pause between speakers
                     except asyncio.TimeoutError:
                         print(f"Timeout in discussion for {speaker}")
@@ -262,6 +304,7 @@ class MafiaGameController:
 
             discussion_rounds += 1
             await asyncio.sleep(3)  # Longer pause between rounds
+            remaining_time = duration - (time.time() - start_time)
 
     async def run_agent_discussion(self, agent_name: str, topic: str):
         """Run discussion for a single agent"""
@@ -269,10 +312,26 @@ class MafiaGameController:
             agent = self.agents[agent_name]
             recent_messages = self.game_state.chat_history[-10:]
 
+            # Get discussion stats to provide context
+            discussion_stats = self.get_discussion_stats()
+
+            # Add discussion context to help agents understand participation
+            discussion_context = f"""
+DISCUSSION CONTEXT:
+- Topic: {topic}
+- Total players: {discussion_stats['total_players']}
+- Most active speaker: {discussion_stats['most_active']}
+- Recent messages: {len(recent_messages)}
+"""
+
             # Run in thread to avoid blocking
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
-                self.executor, agent.participate_in_discussion, topic, recent_messages
+                self.executor,
+                agent.participate_in_discussion,
+                topic,
+                recent_messages,
+                discussion_context,
             )
 
             self.send_update_to_frontend("game_state", self.game_state.to_dict())
@@ -477,3 +536,60 @@ class MafiaGameController:
 
         # Cleanup
         self.executor.shutdown(wait=False)
+
+    def should_agent_respond(
+        self, agent_name: str, recent_messages: List[Dict]
+    ) -> bool:
+        """Check if an agent should respond based on recent messages"""
+        if not recent_messages:
+            return False
+
+        # Check if agent was mentioned or accused in recent messages
+        for msg in recent_messages[-3:]:  # Check last 3 messages
+            message_text = msg["message"].lower()
+            if agent_name.lower() in message_text:
+                # Check for accusation patterns
+                accusation_words = [
+                    "accuse",
+                    "suspicious",
+                    "mafia",
+                    "lying",
+                    "defend",
+                    "explain",
+                ]
+                if any(word in message_text for word in accusation_words):
+                    return True
+
+        return False
+
+    def get_discussion_stats(self) -> Dict:
+        """Get statistics about discussion participation"""
+        alive_players = [
+            name for name in self.game_state.alive_players if name != "Narrator"
+        ]
+
+        # Count messages per player in recent chat history
+        player_message_counts = {}
+        for player in alive_players:
+            player_message_counts[player] = 0
+
+        # Count recent messages (last 20 messages)
+        recent_messages = self.game_state.chat_history[-20:]
+        for msg in recent_messages:
+            if msg["sender"] in player_message_counts:
+                player_message_counts[msg["sender"]] += 1
+
+        return {
+            "total_players": len(alive_players),
+            "player_message_counts": player_message_counts,
+            "most_active": (
+                max(player_message_counts.items(), key=lambda x: x[1])[0]
+                if player_message_counts
+                else None
+            ),
+            "least_active": (
+                min(player_message_counts.items(), key=lambda x: x[1])[0]
+                if player_message_counts
+                else None
+            ),
+        }

@@ -1,35 +1,40 @@
 from .base_agent import MafiaBaseAgent
 from typing import List, Dict, Optional
 
+
 class DetectiveAgent(MafiaBaseAgent):
     """Detective agent with investigation abilities"""
-    
+
     def __init__(self, name: str, game_state, frontend_callback=None):
         personality = """You are highly analytical and observant. You take mental notes of everyone's behavior, 
         voting patterns, and suspicious activities. You're cautious about revealing your role but determined 
         to find the mafia. You ask probing questions and look for inconsistencies in people's stories."""
-        
+
         super().__init__(
-            name=name, 
-            role="detective", 
+            name=name,
+            role="detective",
             personality=personality,
             game_state=game_state,
-            frontend_callback=frontend_callback
+            frontend_callback=frontend_callback,
         )
-        
+
         self.investigations = {}  # player -> result (mafia/civilian)
         self.revealed_role = False
         self.suspected_mafia = set()
         self.trusted_civilians = set()
         self.investigation_priority = []
-    
+
     def choose_investigation_target(self, eligible_targets: List[str]) -> str:
         """Choose who to investigate tonight"""
         context = self.get_context_message()
-        
+
         # Remove already investigated players
-        uninvestigated = [t for t in eligible_targets if t not in self.investigations and t != self.name]
-        
+        uninvestigated = [
+            t
+            for t in eligible_targets
+            if t not in self.investigations and t != self.name
+        ]
+
         prompt = f"""
 As the Detective, choose who to investigate tonight. Consider:
 
@@ -50,33 +55,37 @@ CURRENT SUSPICIONS:
 
 Who should you investigate? Return ONLY the name.
 """
-        
+
         target = self.make_decision(prompt, uninvestigated)
         target = target.strip().strip('"').strip("'")
-        
+
         if target not in uninvestigated:
             target = uninvestigated[0] if uninvestigated else eligible_targets[0]
-        
+
         self.add_memory(f"Decided to investigate {target}")
         return target
-    
+
     def receive_investigation_result(self, player: str, result: str):
         """Receive the result of an investigation"""
         self.investigations[player] = result
         self.add_memory(f"Investigation: {player} is {result}")
-        
+
         if result == "mafia":
             self.suspected_mafia.add(player)
         else:
             self.trusted_civilians.add(player)
-    
+
     def decide_revelation_strategy(self) -> Dict:
         """Decide whether and how to reveal investigation results"""
         context = self.get_context_message()
-        
-        known_mafia = [p for p, result in self.investigations.items() if result == "mafia"]
-        known_civilians = [p for p, result in self.investigations.items() if result == "civilian"]
-        
+
+        known_mafia = [
+            p for p, result in self.investigations.items() if result == "mafia"
+        ]
+        known_civilians = [
+            p for p, result in self.investigations.items() if result == "civilian"
+        ]
+
         prompt = f"""
 DETECTIVE REVELATION DECISION
 You have investigated: {len(self.investigations)} players
@@ -98,19 +107,19 @@ Consider:
 
 What strategy should you use? Return: WAIT, REVEAL_MAFIA, REVEAL_ROLE, or HINT
 """
-        
+
         strategy = self.make_decision(prompt)
         strategy = strategy.strip().upper()
-        
+
         if strategy not in ["WAIT", "REVEAL_MAFIA", "REVEAL_ROLE", "HINT"]:
             strategy = "WAIT"
-        
+
         return {
             "strategy": strategy,
             "known_mafia": known_mafia,
-            "known_civilians": known_civilians
+            "known_civilians": known_civilians,
         }
-    
+
     def make_accusation(self, target: str, evidence: str) -> str:
         """Make a public accusation against a suspected mafia"""
         prompt = f"""
@@ -126,17 +135,21 @@ Make a compelling accusation that:
 
 Be persuasive but not too aggressive. Keep it under 100 words.
 """
-        
+
         accusation = self.make_decision(prompt)
         self.send_message_to_game(accusation)
         self.add_memory(f"Publicly accused {target} of being mafia")
         return accusation
-    
+
     def reveal_detective_role(self) -> str:
         """Reveal that you are the detective"""
-        known_mafia = [p for p, result in self.investigations.items() if result == "mafia"]
-        known_civilians = [p for p, result in self.investigations.items() if result == "civilian"]
-        
+        known_mafia = [
+            p for p, result in self.investigations.items() if result == "mafia"
+        ]
+        known_civilians = [
+            p for p, result in self.investigations.items() if result == "civilian"
+        ]
+
         prompt = f"""
 Time to reveal you're the Detective! Share your findings:
 
@@ -146,13 +159,13 @@ CONFIRMED CIVILIANS: {', '.join(known_civilians)}
 
 Announce your role and findings dramatically but clearly. Rally the civilians to vote for the confirmed mafia.
 """
-        
+
         revelation = self.make_decision(prompt)
         self.revealed_role = True
         self.send_message_to_game(revelation)
         self.add_memory("Revealed my detective role to everyone")
         return revelation
-    
+
     def analyze_voting_patterns(self, vote_history: List[Dict]) -> str:
         """Analyze voting patterns to find suspicious behavior"""
         prompt = f"""
@@ -169,18 +182,20 @@ Look for:
 
 Share your analysis without revealing you're the detective.
 """
-        
+
         analysis = self.make_decision(prompt)
         self.send_message_to_game(analysis)
         return analysis
-    
+
     def cast_vote(self, eligible_players: List[str]) -> str:
         """Cast vote based on investigation knowledge"""
         context = self.get_context_message()
-        
+
         # Prioritize known mafia
-        known_mafia = [p for p in eligible_players if self.investigations.get(p) == "mafia"]
-        
+        known_mafia = [
+            p for p in eligible_players if self.investigations.get(p) == "mafia"
+        ]
+
         prompt = f"""
 DETECTIVE VOTING DECISION
 
@@ -196,44 +211,50 @@ Your investigations: {', '.join([f"{p}:{r}" for p, r in self.investigations.item
 
 Who should you vote for? Return ONLY the name.
 """
-        
+
         vote = self.make_decision(prompt, eligible_players)
         vote = vote.strip().strip('"').strip("'")
-        
+
         if vote not in eligible_players:
             # Prefer known mafia, then any eligible player
             vote = known_mafia[0] if known_mafia else eligible_players[0]
-        
+
         self.add_memory(f"Voted for {vote} based on detective knowledge")
         return vote
-    
-    def participate_in_discussion(self, topic: str, previous_messages: List[Dict]) -> str:
-        """Participate in discussion using detective insights"""
+
+    def participate_in_discussion(
+        self, topic: str, previous_messages: List[Dict], discussion_context: str = ""
+    ) -> str:
+        """Participate in discussion with detective perspective"""
         context = self.get_context_message()
-        
-        msg_history = "\n".join([
-            f"{msg['sender']}: {msg['message']}" 
-            for msg in previous_messages[-8:]
-        ])
-        
-        known_mafia = [p for p, result in self.investigations.items() if result == "mafia"]
-        
+
+        msg_history = "\n".join(
+            [f"{msg['sender']}: {msg['message']}" for msg in previous_messages[-8:]]
+        )
+
         prompt = f"""
+{discussion_context}
+
 DISCUSSION: {topic}
 
 RECENT CONVERSATION:
 {msg_history}
 
-As the Detective (secret role), contribute intelligently:
-1. Guide suspicion toward confirmed mafia: {', '.join(known_mafia)}
-2. Ask probing questions
-3. Point out suspicious behavior
-4. Support logical arguments from confirmed civilians
-5. Build case against mafia without revealing your role
+YOUR INVESTIGATION FINDINGS:
+- Known mafia: {', '.join(self.known_mafia)}
+- Known civilians: {', '.join(self.known_civilians)}
+- Investigation targets: {', '.join(self.investigation_targets[-3:])}
 
-Be analytical and helpful. Keep under 100 words.
+As a detective, contribute strategically:
+1. Share relevant investigation findings (without revealing your role)
+2. Ask questions that might reveal inconsistencies
+3. Support logical arguments that align with your findings
+4. Guide suspicion toward players you know are mafia
+5. Protect players you know are innocent
+
+Be careful not to reveal your role. Act like a concerned civilian.
 """
-        
+
         response = self.make_decision(prompt)
         self.send_message_to_game(response)
         return response

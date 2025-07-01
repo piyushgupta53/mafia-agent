@@ -1,36 +1,37 @@
 from .base_agent import MafiaBaseAgent
 from typing import List, Dict
 
+
 class DoctorAgent(MafiaBaseAgent):
     """Doctor agent with healing/protection abilities"""
-    
+
     def __init__(self, name: str, game_state, frontend_callback=None):
         personality = """You are protective and strategic, focused on saving innocent lives. 
         You're naturally helpful and caring, often showing concern for other players' safety. 
         You think carefully about who might be targeted by the mafia and try to stay hidden 
         while maximizing your protective impact. You're observant of who seems most valuable 
         to the civilian team."""
-        
+
         super().__init__(
-            name=name, 
-            role="doctor", 
+            name=name,
+            role="doctor",
             personality=personality,
             game_state=game_state,
-            frontend_callback=frontend_callback
+            frontend_callback=frontend_callback,
         )
-        
+
         self.protection_history = []
         self.suspected_roles = {}  # player -> suspected role
         self.valuable_civilians = set()
         self.revealed_role = False
-    
+
     def choose_protection_target(self, eligible_targets: List[str]) -> str:
         """Choose who to protect tonight"""
         context = self.get_context_message()
-        
+
         # Remove self from targets (can't protect yourself in most variants)
         targets = [t for t in eligible_targets if t != self.name]
-        
+
         prompt = f"""
 As the Doctor, choose who to protect tonight. Consider:
 
@@ -52,17 +53,17 @@ VALUABLE CIVILIANS: {', '.join(self.valuable_civilians)}
 Who needs protection most? Consider who mafia might target.
 Return ONLY the name.
 """
-        
+
         target = self.make_decision(prompt, targets)
         target = target.strip().strip('"').strip("'")
-        
+
         if target not in targets:
             target = targets[0] if targets else self.name
-        
+
         self.protection_history.append(target)
         self.add_memory(f"Protected {target} from mafia attack")
         return target
-    
+
     def analyze_who_needs_protection(self, recent_events: List[Dict]) -> str:
         """Analyze who might be targeted by mafia"""
         prompt = f"""
@@ -84,15 +85,15 @@ LESS LIKELY TARGETS:
 
 Based on recent discussions and events, who do you think is most at risk?
 """
-        
+
         analysis = self.make_decision(prompt)
         self.add_memory(f"Threat analysis: {analysis}")
         return analysis
-    
+
     def decide_role_revelation(self) -> Dict:
         """Decide whether to reveal doctor role"""
         context = self.get_context_message()
-        
+
         prompt = f"""
 DOCTOR REVELATION DECISION
 
@@ -109,15 +110,15 @@ Consider staying hidden if:
 
 Should you reveal your role? Return: REVEAL or STAY_HIDDEN
 """
-        
+
         decision = self.make_decision(prompt)
         decision = decision.strip().upper()
-        
+
         if decision not in ["REVEAL", "STAY_HIDDEN"]:
             decision = "STAY_HIDDEN"
-        
+
         return {"decision": decision}
-    
+
     def reveal_doctor_role(self, reason: str) -> str:
         """Reveal that you are the doctor"""
         prompt = f"""
@@ -135,14 +136,16 @@ Announce your role convincingly:
 
 Be dramatic but credible. Keep under 150 words.
 """
-        
+
         revelation = self.make_decision(prompt)
         self.revealed_role = True
         self.send_message_to_game(revelation)
         self.add_memory("Revealed my doctor role to everyone")
         return revelation
-    
-    def support_detective_revelation(self, detective_name: str, detective_findings: str) -> str:
+
+    def support_detective_revelation(
+        self, detective_name: str, detective_findings: str
+    ) -> str:
         """Support a revealed detective"""
         prompt = f"""
 {detective_name} has revealed as Detective with findings: {detective_findings}
@@ -155,15 +158,15 @@ As the Doctor, you should:
 
 Support the detective without fully revealing yourself unless necessary.
 """
-        
+
         support = self.make_decision(prompt)
         self.send_message_to_game(support)
         return support
-    
+
     def cast_vote(self, eligible_players: List[str]) -> str:
         """Cast vote to protect civilians and eliminate mafia"""
         context = self.get_context_message()
-        
+
         prompt = f"""
 DOCTOR VOTING DECISION
 
@@ -180,46 +183,52 @@ SUSPECTED ROLES: {', '.join([f"{p}:{r}" for p, r in self.suspected_roles.items()
 Your goal is protecting innocent lives. Who should be eliminated?
 Return ONLY the name.
 """
-        
+
         vote = self.make_decision(prompt, eligible_players)
         vote = vote.strip().strip('"').strip("'")
-        
+
         if vote not in eligible_players:
             vote = eligible_players[0] if eligible_players else ""
-        
+
         self.add_memory(f"Voted to eliminate {vote}")
         return vote
-    
-    def participate_in_discussion(self, topic: str, previous_messages: List[Dict]) -> str:
-        """Participate helpfully while staying hidden"""
+
+    def participate_in_discussion(
+        self, topic: str, previous_messages: List[Dict], discussion_context: str = ""
+    ) -> str:
+        """Participate in discussion with doctor perspective"""
         context = self.get_context_message()
-        
-        msg_history = "\n".join([
-            f"{msg['sender']}: {msg['message']}" 
-            for msg in previous_messages[-8:]
-        ])
-        
+
+        msg_history = "\n".join(
+            [f"{msg['sender']}: {msg['message']}" for msg in previous_messages[-8:]]
+        )
+
         prompt = f"""
+{discussion_context}
+
 DISCUSSION: {topic}
 
 RECENT CONVERSATION:
 {msg_history}
 
-As the Doctor (hidden role), participate helpfully:
-1. Show concern for innocent players' safety
-2. Support logical arguments against mafia
-3. Ask protective questions about evidence
-4. Help organize civilian strategy
-5. Subtly guide away from suspecting confirmed civilians
+YOUR PROTECTION HISTORY:
+- Recently protected: {', '.join(self.recent_protections[-3:])}
+- Protection strategy: {self.protection_strategy}
 
-Be caring and logical. Help civilians without revealing your role.
-Keep under 100 words.
+As a doctor, contribute to finding mafia:
+1. Share observations about suspicious behavior
+2. Ask questions to help identify threats
+3. Support logical arguments from trusted players
+4. Be especially protective of players you've saved
+5. Help organize civilian strategy
+
+Be careful not to reveal your role. Act like a concerned civilian.
 """
-        
+
         response = self.make_decision(prompt)
         self.send_message_to_game(response)
         return response
-    
+
     def assess_player_role(self, player: str, behavior: str) -> str:
         """Assess what role another player might have"""
         prompt = f"""
@@ -235,14 +244,14 @@ Based on their actions, voting, and discussion style, what role might they have?
 
 What role do you suspect {player} has? Return: DETECTIVE, DOCTOR, CIVILIAN, or MAFIA
 """
-        
+
         assessment = self.make_decision(prompt)
         assessment = assessment.strip().upper()
-        
+
         if assessment in ["DETECTIVE", "DOCTOR", "CIVILIAN", "MAFIA"]:
             self.suspected_roles[player] = assessment
-            
+
             if assessment in ["DETECTIVE", "DOCTOR", "CIVILIAN"]:
                 self.valuable_civilians.add(player)
-        
+
         return assessment
